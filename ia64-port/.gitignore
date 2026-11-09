@@ -1,0 +1,4 @@
+# Delivered IA-64 native binary must stay visible: the repository root
+# .gitignore has a bare `out` rule that would otherwise hide it.
+!out/
+!out/**

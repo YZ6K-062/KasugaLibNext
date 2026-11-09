@@ -1,0 +1,7 @@
+# CMake/Ninja intermediate files (rebuildable, machine-specific absolute paths)
+build/
+
+# Delivered native binaries MUST stay visible: the repository root .gitignore
+# has a bare `out` rule that would otherwise hide every artifact below.
+!out/
+!out/**

@@ -84,10 +84,21 @@ jobs:
           path: modules/modelling/build/libs/kasuga-modelling-*.jar
           if-no-files-found: error
 
+  # Experimental cross-compiled targets (s390x, PPC64/LE, ARM64, Windows on
+  # ARM). Reused in this same run so their box3d-native-* artifacts are merged
+  # by package-universal below. A failure here must not fail the main build.
+  native-experimental:
+    uses: ./.github/workflows/native-experimental.yml
+    secrets: inherit
+    continue-on-error: true
+
   # Package a single jar containing the box3d native libraries for all
   # platforms without re-running the Gradle/NeoForge pipeline.
+  # `always()` keeps the release artifact available even when the experimental
+  # matrix failed; the native libraries it produced are simply absent then.
   package-universal:
-    needs: build
+    needs: [build, native-experimental]
+    if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Setup JDK

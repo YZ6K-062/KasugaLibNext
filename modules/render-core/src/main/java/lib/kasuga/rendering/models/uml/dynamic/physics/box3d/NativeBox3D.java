@@ -100,7 +100,37 @@ public final class NativeBox3D {
             case "aarch64", "arm64" -> "aarch64";
             default -> sanitize(archName);
         };
+
+        // Windows XP / XP x64 / Server 2003 (NT 5.1 / 5.2) cannot load the
+        // official x86-64 build: that DLL imports VCRUNTIME140.dll and the
+        // UCRT api-ms-win-crt-* forwarders, none of which exist on NT 5.x.
+        // The legacy build links only KERNEL32.dll + msvcrt.dll and ships in
+        // native/legacy_windows-x86_64/. Only an x86-64 legacy artifact exists.
+        if ("windows".equals(os) && "x86_64".equals(arch) && isLegacyWindows(osName)) {
+            return "legacy_windows-x86_64";
+        }
         return os + "-" + arch;
+    }
+
+    /**
+     * Detects Windows NT 5.x. The release name is checked first because it is
+     * unambiguous; the numeric os.version is a fallback for JVMs that report a
+     * generic "Windows NT" name. Vista and later are NT 6.0+, so they never
+     * take the legacy branch even if the version string is unusual.
+     */
+    private static boolean isLegacyWindows(String osName) {
+        if (osName.contains("windows xp") || osName.contains("2003")
+                || osName.contains("windows nt 5")) {
+            return true;
+        }
+        String version = System.getProperty("os.version", "");
+        int dot = version.indexOf('.');
+        try {
+            int major = Integer.parseInt((dot < 0 ? version : version.substring(0, dot)).trim());
+            return major > 0 && major < 6;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private static String sanitize(String value) {

@@ -1,0 +1,365 @@
+name: Experimental native builds
+
+# Cross-compiles the experimental Box3D JNI targets that GitHub-hosted runners
+# cannot build natively, and publishes them with the SAME artifact prefix
+# (`box3d-native-*`) that build.yml's package-universal job merges.
+#
+# Hosted runners cover:
+#   - Linux s390x / ppc64 (big endian) / ppc64le / aarch64  (apt cross GCC + qemu-user-static)
+#   - Windows on ARM (aarch64)                             (llvm-mingw cross package)
+#
+# IA-64 Linux and Legacy Windows XP need a self-hosted runner (T2 sysroot and
+# llvm-mingw-xp are not available on hosted runners); see the `self-hosted`
+# job below, which is opt-in via a repository variable.
+
+on:
+  push:
+    paths:
+      - 'modules/modelling/src/main/native/**'
+      - 'native-port/**'
+      - 'ia64-port/**'
+      - '.github/workflows/native-experimental.yml'
+  pull_request:
+    paths:
+      - 'modules/modelling/src/main/native/**'
+      - 'native-port/**'
+      - 'ia64-port/**'
+      - '.github/workflows/native-experimental.yml'
+  workflow_dispatch:
+    inputs:
+      include_self_hosted:
+        description: 'Also run IA-64 / Legacy Windows XP jobs on self-hosted runners'
+        type: boolean
+        default: false
+  # build.yml calls this workflow so all artifacts land in the SAME run and
+  # package-universal can merge them with its existing `box3d-native-*` pattern.
+  workflow_call:
+    inputs:
+      include_self_hosted:
+        description: 'Also run IA-64 / Legacy Windows XP jobs on self-hosted runners'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  LLVM_MINGW_VERSION: '20261104'
+  # msvcrt variant keeps the resulting DLL free of UCRT/VCRUNTIME dependencies.
+  LLVM_MINGW_ASSET: 'llvm-mingw-20261104-msvcrt-ubuntu-22.04-x86_64.tar.xz'
+
+jobs:
+  # ---------------------------------------------------------------- Linux ----
+  cross-linux:
+    name: Linux ${{ matrix.classifier }}
+    runs-on: ubuntu-24.04
+    env:
+      OUT_DIR: ${{ runner.temp }}/box3d-out
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-s390x
+            classifier: linux-s390x
+            triple: s390x-linux-gnu
+            gcc: gcc-s390x-linux-gnu
+            gxx: g++-s390x-linux-gnu
+            qemu: qemu-s390x-static
+            endian: big
+          - target: linux-ppc64
+            classifier: linux-ppc64
+            triple: powerpc64-linux-gnu
+            gcc: gcc-powerpc64-linux-gnu
+            gxx: g++-powerpc64-linux-gnu
+            qemu: qemu-ppc64-static
+            endian: big
+          - target: linux-ppc64le
+            classifier: linux-ppc64le
+            triple: powerpc64le-linux-gnu
+            gcc: gcc-powerpc64le-linux-gnu
+            gxx: g++-powerpc64le-linux-gnu
+            qemu: qemu-ppc64le-static
+            endian: little
+          - target: linux-aarch64
+            classifier: linux-aarch64
+            triple: aarch64-linux-gnu
+            gcc: gcc-aarch64-linux-gnu
+            gxx: g++-aarch64-linux-gnu
+            qemu: qemu-aarch64-static
+            endian: little
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21 (JNI headers)
+        id: setup-java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Install cross toolchain and QEMU user mode
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # Package names are explicit (not derived from the triple): Ubuntu
+          # calls the little-endian POWER port ppc64el, and its cross compiler
+          # packages do not follow the Debian triple spelling uniformly.
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build qemu-user-static \
+            ${{ matrix.gcc }} ${{ matrix.gxx }}
+          ${{ matrix.triple }}-gcc --version | head -1
+          command -v ${{ matrix.qemu }}
+
+      - name: Verify sysroot and toolchain layout
+        run: |
+          set -euo pipefail
+          test -f "/usr/${{ matrix.triple }}/lib/libc.so.6"
+          test -f "/usr/${{ matrix.triple }}/include/stdio.h"
+          echo "sysroot /usr/${{ matrix.triple }} present"
+
+      - name: Build ${{ matrix.classifier }}
+        env:
+          NATIVE_SRC: ${{ github.workspace }}/modules/modelling/src/main/native
+          KASUGA_JNI_INCLUDE_DIR: ${{ steps.setup-java.outputs.java-home }}/include
+        run: python3 native-port/build.py --target ${{ matrix.target }} --out-dir "${OUT_DIR}"
+
+      - name: Verify ELF architecture and endianness
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          CLASSIFIER: ${{ matrix.classifier }}
+          ENDIAN: ${{ matrix.endian }}
+        run: |
+          set -euo pipefail
+          lib="${OUT_DIR}/native/${CLASSIFIER}/libkasuga_box3d.so"
+          echo "== ${lib} =="
+          file "${lib}"
+          ${TRIPLE}-readelf -h "${lib}" | grep -E 'Class:|Data:|Machine:'
+          # e_ident[EI_DATA]: 1 = little, 2 = big endian
+          # Do NOT pipe through xargs: the string contains "2's complement",
+          # whose apostrophe is treated as an unterminated quote by xargs.
+          data=$(${TRIPLE}-readelf -h "${lib}" | awk -F: '/Data:/ {print $2}' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          if [[ "${ENDIAN}" == "big" && "${data}" != *"big endian"* ]]; then
+            echo "::error::expected big endian, got ${data}"; exit 1
+          fi
+          if [[ "${ENDIAN}" == "little" && "${data}" != *"little endian"* ]]; then
+            echo "::error::expected little endian, got ${data}"; exit 1
+          fi
+          count=$(${TRIPLE}-nm -D --defined-only "${lib}" | grep -c 'Java_lib_kasuga' || true)
+          echo "exported JNI symbols: ${count}"
+          test "${count}" -eq 62
+
+      - name: Runtime smoke test under QEMU user mode
+        env:
+          JNI_INCLUDE: ${{ steps.setup-java.outputs.java-home }}/include
+          TRIPLE: ${{ matrix.triple }}
+          QEMU: ${{ matrix.qemu }}
+          CLASSIFIER: ${{ matrix.classifier }}
+        run: |
+          set -euo pipefail
+          # The harness MUST be built for the TARGET architecture, otherwise
+          # QEMU user mode rejects it with "Invalid ELF image for this
+          # architecture". Use the same cross compiler as the library.
+          "${TRIPLE}-gcc" -O2 -I"${JNI_INCLUDE}" -I"${JNI_INCLUDE}/linux" \
+            -o /tmp/harness native-port/verify/jni_harness.c -ldl -lm
+          "${QEMU}" -L "/usr/${TRIPLE}" /tmp/harness \
+            "${OUT_DIR}/native/${CLASSIFIER}/libkasuga_box3d.so"
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: box3d-native-experimental-${{ matrix.classifier }}
+          path: ${{ runner.temp }}/box3d-out/native/
+          if-no-files-found: error
+
+  # --------------------------------------------------------- Windows ARM64 ---
+  cross-windows-arm64:
+    name: Windows on ARM (aarch64)
+    runs-on: ubuntu-24.04
+    env:
+      OUT_DIR: ${{ runner.temp }}/box3d-out
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21 (JNI headers)
+        id: setup-java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build xz-utils
+
+      - name: Cache llvm-mingw cross toolchain
+        id: cache-mingw
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_VERSION }}-msvcrt-ubuntu-22.04-x86_64
+
+      - name: Download llvm-mingw cross toolchain
+        if: steps.cache-mingw.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/llvm-mingw"
+          curl -sSfL -o "${RUNNER_TEMP}/llvm-mingw.tar.xz" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${LLVM_MINGW_ASSET}"
+          tar -xf "${RUNNER_TEMP}/llvm-mingw.tar.xz" -C "${RUNNER_TEMP}/llvm-mingw" --strip-components=1
+          test -x "${RUNNER_TEMP}/llvm-mingw/bin/aarch64-w64-mingw32-clang"
+
+      - name: Build windows-aarch64
+        env:
+          MINGW_ROOT: ${{ runner.temp }}/llvm-mingw
+          NATIVE_SRC: ${{ github.workspace }}/modules/modelling/src/main/native
+          KASUGA_JNI_INCLUDE_DIR: ${{ steps.setup-java.outputs.java-home }}/include
+        run: python3 native-port/build.py --target windows-aarch64 --out-dir "${OUT_DIR}"
+
+      - name: Verify PE machine type and exports
+        env:
+          MINGW_ROOT: ${{ runner.temp }}/llvm-mingw
+        run: |
+          set -euo pipefail
+          dll="${OUT_DIR}/native/windows-aarch64/kasuga_box3d.dll"
+          file "${dll}"
+          readelf="$MINGW_ROOT/bin/llvm-readobj"
+          "${readelf}" --file-headers "${dll}" | grep -iE 'Machine:|Subsystem'
+          "${readelf}" --file-headers "${dll}" | grep -q 'IMAGE_FILE_MACHINE_ARM64'
+          count=$("${readelf}" --coff-exports "${dll}" | grep -c 'Name: Java_lib_kasuga' || true)
+          echo "exported JNI symbols: ${count}"
+          test "${count}" -eq 62
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: box3d-native-experimental-windows-aarch64
+          path: ${{ runner.temp }}/box3d-out/native/
+          if-no-files-found: error
+
+  # ------------------------------------------------ self-hosted (opt-in) ----
+  # Opt-in: hosted runners have neither the T2 IA-64 sysroot nor the
+  # XP-targeting llvm-mingw-xp toolchain. Each job pins its own OS so a single
+  # job never straddles two different self-hosted machines.
+  self-hosted-ia64:
+    name: IA-64 Linux (self-hosted)
+    if: ${{ inputs.include_self_hosted == true || vars.ENABLE_NATIVE_SELF_HOSTED == 'true' }}
+    runs-on: [self-hosted, linux, ia64-cross]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate IA-64 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Two supported layouts:
+          #   1. bundle   - an unpacked kasuga-ia64-toolchain (from the U-disk
+          #                 archive). Point IA64_BUNDLE at it, or the default
+          #                 /opt/kasuga-ia64-toolchain is tried automatically.
+          #   2. system   - /opt/cross + /opt/ia64/rootfs, as on the Debian
+          #                 build host this port was developed on.
+          bundle="${IA64_BUNDLE:-/opt/kasuga-ia64-toolchain}"
+          if [ -f "$bundle/env.sh" ]; then
+            # env.sh exports IA64_TOOLCHAIN_PREFIX / IA64_SYSROOT /
+            # KASUGA_JNI_INCLUDE_DIR with the bundle-relative paths.
+            . "$bundle/env.sh"
+            echo "using bundle: $bundle"
+          elif [ -x /opt/cross/bin/ia64-linux-gnu-gcc ]; then
+            IA64_TOOLCHAIN_PREFIX=/opt/cross/bin/ia64-linux-gnu-
+            IA64_SYSROOT=/opt/ia64/rootfs
+            KASUGA_JNI_INCLUDE_DIR=${KASUGA_JNI_INCLUDE_DIR:-/opt/src/jdk21/build/ia64c/images/jdk/include}
+            echo "using system toolchain: /opt/cross + /opt/ia64/rootfs"
+          else
+            echo "::error::no IA-64 toolchain found (set IA64_BUNDLE or install /opt/cross)"
+            exit 1
+          fi
+
+          # Sanity: the compiler must exist and the sysroot must have libc.
+          "${IA64_TOOLCHAIN_PREFIX}gcc" --version | head -1
+          test -f "${IA64_SYSROOT}/usr/lib/libc.so" || { echo "::error::sysroot incomplete at ${IA64_SYSROOT}"; exit 1; }
+          test -f "${KASUGA_JNI_INCLUDE_DIR}/jni.h" || { echo "::error::jni.h missing at ${KASUGA_JNI_INCLUDE_DIR}"; exit 1; }
+
+          # Persist for later steps.
+          {
+            echo "IA64_TOOLCHAIN_PREFIX=${IA64_TOOLCHAIN_PREFIX}"
+            echo "IA64_SYSROOT=${IA64_SYSROOT}"
+            echo "KASUGA_JNI_INCLUDE_DIR=${KASUGA_JNI_INCLUDE_DIR}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build linux-ia64
+        shell: bash
+        env:
+          NATIVE_SRC: ${{ github.workspace }}/modules/modelling/src/main/native
+        run: |
+          python3 native-port/build.py --target linux-ia64 --out-dir "${RUNNER_TEMP}/box3d-out"
+
+      - name: Verify ELF machine and exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          lib="${RUNNER_TEMP}/box3d-out/native/linux-ia64/libkasuga_box3d.so"
+          file "$lib"
+          "${IA64_TOOLCHAIN_PREFIX}readelf" -h "$lib" | grep -q 'Intel IA-64' || { echo "::error::not an IA-64 object"; exit 1; }
+          "${IA64_TOOLCHAIN_PREFIX}readelf" -h "$lib" | grep -q 'little endian' || { echo "::error::unexpected endianness"; exit 1; }
+          count=$("${IA64_TOOLCHAIN_PREFIX}nm" -D --defined-only "$lib" | grep -c 'Java_lib_kasuga' || true)
+          echo "exported JNI symbols: ${count}"
+          test "${count}" -eq 62
+
+      - name: Upload IA-64 native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: box3d-native-experimental-linux-ia64
+          path: ${{ runner.temp }}/box3d-out/native/
+          if-no-files-found: error
+
+  self-hosted-xp:
+    name: Legacy Windows XP x64 (self-hosted)
+    if: ${{ inputs.include_self_hosted == true || vars.ENABLE_NATIVE_SELF_HOSTED == 'true' }}
+    runs-on: [self-hosted, windows, xp-toolchain]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21 (JNI headers)
+        id: setup-java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Preflight llvm-mingw-xp
+        shell: pwsh
+        run: |
+          # setup-runner.ps1 publishes MINGW_ROOT_XP machine-wide; fall back to
+          # the documented default so a hand-installed toolchain still works.
+          $root = $env:MINGW_ROOT_XP
+          if (-not $root) { $root = 'C:\llvm-mingw-xp' }
+          $clang = Join-Path $root 'bin\x86_64-w64-mingw32-clang.exe'
+          if (-not (Test-Path $clang)) { throw "llvm-mingw-xp not found: $clang (set MINGW_ROOT_XP)" }
+          Add-Content -Path $env:GITHUB_ENV -Value "MINGW_ROOT=$root"
+          Write-Output "llvm-mingw-xp: $root"
+
+      - name: Build legacy_windows-x86_64
+        shell: pwsh
+        env:
+          NATIVE_SRC: ${{ github.workspace }}/modules/modelling/src/main/native
+          KASUGA_JNI_INCLUDE_DIR: ${{ steps.setup-java.outputs.java-home }}/include
+        run: python native-port/build.py --target windows-x86_64-legacy --out-dir "${{ runner.temp }}/box3d-out"
+
+      - name: Upload Legacy Windows native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: box3d-native-experimental-legacy_windows-x86_64
+          path: ${{ runner.temp }}/box3d-out/native/
+          if-no-files-found: error
