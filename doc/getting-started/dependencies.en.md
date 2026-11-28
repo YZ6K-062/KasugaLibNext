@@ -150,7 +150,7 @@ The full `KasugaLibNext` build (`:modules:library`, `:modules:create`, `:externa
 | `mavenCentral()` / `gradlePluginPortal()` | Micronaut `4.9.10`, LWJGL `3.3.3`, JOML `1.10.5`, DataFixerUpper `8.0.16`, Gson `2.10.1`, Guava `32.1.2-jre`, jgltf `2.0.4`, ZXing `3.5.3`, Javet `5.0.1`, GraalVM `24.1.2` | Module `build.gradle` files |
 | `https://maven.neoforged.net/releases` | NeoForge `21.1.268`, `testframework`, `render-core` / `render-opengl` | `modules/render-core/build.gradle`, ModDevGradle |
 | `https://libraries.minecraft.net` | Shared Minecraft libraries | `modules/render-core/build.gradle` |
-| `https://maven.createmod.net` | Create `6.0.11-346`, Ponder `1.0.92+mc1.21.1`, Flywheel `1.0.7` | `modules/library/build.gradle`, `modules/create/build.gradle` |
+| `https://maven.createmod.net` | Create `6.0.10-280`, Ponder `1.0.82+mc1.21.1`, Flywheel `1.0.6` | `modules/library/build.gradle`, `modules/create/build.gradle` |
 | `https://maven.ithundxr.dev/snapshots` | Registrate `MC1.21-1.3.0+67` | `modules/library/build.gradle`, `modules/create/build.gradle` |
 | `https://maven.squiddev.cc` (group `cc.tweaked`) | CC:Tweaked `cc-tweaked-1.21.1-forge:1.116.1` | `modules/library/build.gradle`, `modules/create/build.gradle` |
 | `https://maven.ryanhcode.dev/releases` (group `dev.ryanhcode.sable-companion`) | Sable Companion `sable-companion-common-1.21.1:1.6.0` (`compileOnly`) | `modules/create/build.gradle` |
@@ -163,7 +163,7 @@ The full `KasugaLibNext` build (`:modules:library`, `:modules:create`, `:externa
 | Component / Mod | Requirement | Behavior |
 | --- | --- | --- |
 | Minecraft `1.21.1` + NeoForge `[21.1.268,)` | Required | Enforced in `neoforge.mods.toml` |
-| Create `6.0.11-346` + Ponder + Flywheel + Registrate | Required by aggregate `kasuga-library-*-all.jar` | Although DI beans are gated via `@CreateModBeans` (`IfCreateModLoaded`), `:modules:library`'s `neoforge.mods.toml` currently declares `kasuga_lib_create.mixins.json` (`required: true`), and `CreateMixinPlugin` inspects `BezierConnection.class`—throwing `IllegalStateException` on client startup if Create is absent |
+| Create `6.0.10-280` + Ponder + Flywheel + Registrate | Required by aggregate `kasuga-library-*-all.jar` | Although DI beans are gated via `@CreateModBeans` (`IfCreateModLoaded`), `:modules:library`'s `neoforge.mods.toml` currently declares `kasuga_lib_create.mixins.json` (`required: true`), and `CreateMixinPlugin` inspects `BezierConnection.class`—throwing `IllegalStateException` on client startup if Create is absent |
 | `kasuga_lib_javet` (`external/slp/javet`) | Optional | Supplies the Javet `5.0.1` V8 JavaScript engine; only needed when scripts/packs declare `javascript` packages. On first run `JavetDownloader` fetches V8 natives to `<gameDir>/native-libraries/javet/` |
 | Iris `1.8.14-beta.1` + Sodium `0.8.14-beta.2` | Optional (client-only) | `kasuga_lib_iris.mixins.json` sets `required: false`; `IrisCameraMixinPlugin` and `IrisCompat` probe Iris/Sodium ABIs at startup and fall back gracefully when absent or incompatible |
 | Voxy / Sable | Optional | `VoxyCompat` and the `Create` Sable adapter detect presence via `ModList` / class checks |

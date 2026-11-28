@@ -30,12 +30,19 @@ repositories {
             includeGroup("cc.tweaked")
         }
     }
+    maven {
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
 }
 
 useModProject(project(':modules:core'))
 // The Create preview demos reuse modelling's selector and smoke fixtures, so both
 // main and contentTesting must share the mod layer and its runtime dependencies below.
 useModProject(project(':modules:modelling'))
+// modelling's contentTesting fixtures (e.g. FanDataDrivenFactories) construct geometry shapes at
+// class-init time, and source-set registration is not transitive through useModProject.
+useModProject(project(':modules:geometry'))
 // NeoForge source-set registration is not transitive. Keep the rendering classes in the
 // same mod class loader as their Minecraft callers in dev runs and integration tests.
 useModProject(project(':modules:render-core'))
@@ -247,11 +254,18 @@ dependencies {
     contentTestingAnnotationProcessor 'io.micronaut:micronaut-inject-java:4.9.10'
 
 
-    implementation("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
+    implementation("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
     implementation("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
     compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
     runtimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
     implementation("com.tterrag.registrate:Registrate:${registrate_version}")
+
+    // Create addons resolved through CurseMaven. Pinned to the newest 1.21.1/NeoForge file of each.
+    // Simurail is built on Aeronautics; Loconautics also requires Sable and Create at runtime.
+    implementation("curse.maven:create-aeronautics-676721:9711672") { transitive = false } // Create Aeronautics 1.3.3
+    implementation("curse.maven:create-simurail-1583981:9854929") { transitive = false } // Create Simurail 0.1.5
+    implementation("curse.maven:createloconautics-1793084:9821427") { transitive = false } // Create: Loconautics 0.1.4BETA
+    implementation("curse.maven:sable-1312371:9043865") { transitive = false } // Sable 2.0.6
 
 
 

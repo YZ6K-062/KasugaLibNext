@@ -8,6 +8,8 @@ import com.simibubi.create.content.trains.graph.DimensionPalette;
 import com.simibubi.create.content.trains.graph.TrackGraph;
 import lib.kasuga.create.CreateConfig;
 import lib.kasuga.create.content.train.CarriageAccess;
+import lib.kasuga.create.content.train.event.CarriageLoadEvent;
+import lib.kasuga.create.content.train.event.CarriageSaveEvent;
 import lib.kasuga.create.content.train.event.ModifyCarriagePostureEvent;
 import net.createmod.catnip.animation.LerpedFloat;
 import net.createmod.catnip.math.AngleHelper;
@@ -47,13 +49,6 @@ import java.util.Optional;
 @Mixin(value = Carriage.class, remap = false)
 public class CarriageMixin implements CarriageAccess {
 
-    /** NBT key of the list of {@code (BogeyData, Position)} tuples appended at {@code write} return. */
-    @Unique
-    private static final String KSG_REDUNDANT_BOGEYS_KEY = "KasugaRedundantBogeys";
-
-    @Unique
-    private static final String KSG_CONTENT_KEY = "KasugaContent";
-
     /*
      * These fields deliberately have no initialisers: Mixin merges field initialisers into the
      * target constructor by line-number range, and a multi-line initialiser added here made it
@@ -87,10 +82,6 @@ public class CarriageMixin implements CarriageAccess {
     /** Units per tick the client offset may move towards the synced value. */
     @Unique
     private static final float KSG_Y_OFFSET_CHASE_SPEED = 0.5f;
-
-    /** NBT key of the persisted offset. */
-    @Unique
-    private static final String KSG_Y_OFFSET_KEY = "KasugaYOffset";
 
     @Unique
     private List<CarriageBogey> ksg$redundantBogeys() {
@@ -255,72 +246,16 @@ public class CarriageMixin implements CarriageAccess {
         return -(AngleHelper.deg(Math.atan2(diffZ, diffX)) + 90);
     }
 
-    /**
-     * Appends the redundant bogeys to the tag vanilla {@code write} just produced. Paired with
-     * {@code Math.min} so a size drift cannot index out of bounds; normal carriages keep their NBT
-     * unchanged.
-     */
     @Inject(method = "write", at = @At("RETURN"))
-    private void kasuga$writeRedundantBogeys(DimensionPalette dimensions, HolderLookup.Provider registries,
+    private void kasuga$write(DimensionPalette dimensions, HolderLookup.Provider registries,
                                              CallbackInfoReturnable<CompoundTag> cir) {
-        CompoundTag parentTag = cir.getReturnValue();
-        CompoundTag tag = new CompoundTag();
-        parentTag.put(KSG_CONTENT_KEY, tag);
-        if (CreateConfig.isCarriageYOffestEnabled() && ksg$yOffset != 0)
-            tag.putFloat(KSG_Y_OFFSET_KEY, ksg$yOffset);
-        if (!CreateConfig.isMultiBogeyCarriageEnabled())
-            return;
-        List<CarriageBogey> bogeys = ksg$redundantBogeys();
-        List<BlockPos> positions = ksg$redundantBogeyPositions();
-        int count = Math.min(bogeys.size(), positions.size());
-        if (count == 0)
-            return;
-
-        ListTag tuples = new ListTag();
-        for (int i = 0; i < count; i++) {
-            CompoundTag tuple = new CompoundTag();
-            tuple.put("BogeyData", bogeys.get(i).write(dimensions));
-            tuple.put("Position", NbtUtils.writeBlockPos(positions.get(i)));
-            tuples.add(tuple);
-        }
-        tag.put(KSG_REDUNDANT_BOGEYS_KEY, tuples);
+        NeoForge.EVENT_BUS.post(new CarriageSaveEvent((Carriage) (Object) this, dimensions, registries, cir.getReturnValue()));
     }
 
-    /**
-     * Rebuilds the redundant bogeys before vanilla {@code read} returns, using the same
-     * {@code graph}/{@code dimensions} as the vanilla bogey entries. A tuple without a readable
-     * position is skipped as a whole so both lists stay index-aligned.
-     */
     @Inject(method = "read", at = @At("RETURN"))
-    private static void kasuga$readRedundantBogeys(CompoundTag tag, HolderLookup.Provider registries,
+    private static void kasuga$read(CompoundTag tag, HolderLookup.Provider registries,
                                                    TrackGraph graph, DimensionPalette dimensions,
                                                    CallbackInfoReturnable<Carriage> cir) {
-        if (!tag.contains(KSG_CONTENT_KEY)) return;
-        tag = tag.getCompound(KSG_CONTENT_KEY);
-        Carriage carriage = cir.getReturnValue();
-        if (CreateConfig.isCarriageYOffestEnabled()) {
-            ((CarriageAccess) (Object) carriage).kasuga$restoreYOffset(tag.getFloat(KSG_Y_OFFSET_KEY));
-        }
-        if (!CreateConfig.isMultiBogeyCarriageEnabled())
-            return;
-        ListTag tuples = tag.getList(KSG_REDUNDANT_BOGEYS_KEY, Tag.TAG_COMPOUND);
-        if (tuples.isEmpty())
-            return;
-        List<CarriageBogey> bogeys = new ArrayList<>(tuples.size());
-        List<BlockPos> positions = new ArrayList<>(tuples.size());
-        for (int i = 0; i < tuples.size(); i++) {
-            CompoundTag tuple = tuples.getCompound(i);
-            Optional<BlockPos> position = NbtUtils.readBlockPos(tuple, "Position");
-            if (position.isEmpty())
-                continue;
-            CarriageBogey bogey = CarriageBogey.read(tuple.getCompound("BogeyData"), graph, dimensions);
-            bogey.carriage = carriage;
-            bogeys.add(bogey);
-            positions.add(position.get());
-        }
-
-        CarriageAccess access = (CarriageAccess) (Object) carriage;
-        access.kasuga$addRedundantBogeys(bogeys);
-        access.kasuga$addRedundantBogeyPositions(positions);
+        NeoForge.EVENT_BUS.post(new CarriageLoadEvent(cir.getReturnValue(), registries, tag, dimensions, graph));
     }
 }

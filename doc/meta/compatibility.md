@@ -41,7 +41,7 @@
 
 | 集成目标 | 构建声明 / 依赖版本 | 已记录的实际验证组合 | 对应模块与参考文档 |
 | --- | --- | --- | --- |
-| Create / Ponder / Flywheel / Registrate | 默认：`Create 6.0.11-346`、`Ponder 1.0.92+mc1.21.1`、`Flywheel 1.0.7`、`Registrate MC1.21-1.3.0+67` | 此前在 NeoForge `21.1.228` 下回归过 `Create 6.0.10-280`、`Flywheel 1.0.6`、`Registrate MC1.21-1.3.0+67` | `modules/create`、[移动结构宿主](../reference/moving-scene-hosts.md)、[Sable 场景宿主](../reference/sable-scene-hosts.md) |
+| Create / Ponder / Flywheel / Registrate | 默认：`Create 6.0.10-280`、`Ponder 1.0.82+mc1.21.1`、`Flywheel 1.0.6`、`Registrate MC1.21-1.3.0+67`（`Create 6.0.11` 移除了 `NixieTubeBlock.getPower`，与航空学捆绑的 Create Simulated `1.3.3` mixin 不兼容，故锁定在 `6.0.10` 系列） | 在 NeoForge `21.1.228` 下回归过 `Create 6.0.10-280`、`Flywheel 1.0.6`、`Registrate MC1.21-1.3.0+67` | `modules/create`、[移动结构宿主](../reference/moving-scene-hosts.md)、[Sable 场景宿主](../reference/sable-scene-hosts.md) |
 | CC:Tweaked | `1.116.1`（`cc-tweaked-1.21.1-forge:1.116.1`） | 随 `modules/create` 与 `modules/library` 编译及测试配置解析 | `gradle.properties`、`modules/create/build.gradle` |
 | Iris / Sodium | 本地编译依赖：Iris `1.8.14-beta.1`、Sodium `0.8.14-beta.2`（Minecraft 1.21.1） | 历史记录包含 Iris `1.8.12` + Sodium `0.6.13` 的 BSL 8.2.04 冒烟、多机位与 OIT 验证；加权 OIT 也曾在 Iris `1.8.14-beta.1` 上验证排序回退 | `modules/iris-compat`、[模型材质 Alpha 渲染](../reference/render-alpha-passes.md)、[换装基线](wardrobe-benchmarks.md) |
 | Sable / Aeronautics | 仅 `compileOnly` 依赖 `sable-companion-common-1.21.1:1.6.0` | macOS ARM64 上与官方 Sable `2.0.6`、航空学 `1.3.2`、Companion `1.6.0`、NeoForge `21.1.228`、Create `6.0.10-280`、Flywheel `1.0.6` 完成实机验收 | `modules/create`、[Sable 场景宿主](../reference/sable-scene-hosts.md) |

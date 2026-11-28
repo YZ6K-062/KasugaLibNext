@@ -150,7 +150,7 @@ dependencies {
 | `mavenCentral()` / `gradlePluginPortal()` | Micronaut `4.9.10`、LWJGL `3.3.3`、JOML `1.10.5`、DataFixerUpper `8.0.16`、Gson `2.10.1`、Guava `32.1.2-jre`、jgltf `2.0.4`、ZXing `3.5.3`、Javet `5.0.1`、GraalVM `24.1.2` 等 | 各模块 `build.gradle` |
 | `https://maven.neoforged.net/releases` | NeoForge `21.1.268`、`testframework`、`render-core` / `render-opengl` | `modules/render-core/build.gradle`、ModDevGradle |
 | `https://libraries.minecraft.net` | Minecraft 共享库 | `modules/render-core/build.gradle` |
-| `https://maven.createmod.net` | Create `6.0.11-346`、Ponder `1.0.92+mc1.21.1`、Flywheel `1.0.7` | `modules/library/build.gradle`、`modules/create/build.gradle` |
+| `https://maven.createmod.net` | Create `6.0.10-280`、Ponder `1.0.82+mc1.21.1`、Flywheel `1.0.6` | `modules/library/build.gradle`、`modules/create/build.gradle` |
 | `https://maven.ithundxr.dev/snapshots` | Registrate `MC1.21-1.3.0+67` | `modules/library/build.gradle`、`modules/create/build.gradle` |
 | `https://maven.squiddev.cc`（限定组 `cc.tweaked`） | CC:Tweaked `cc-tweaked-1.21.1-forge:1.116.1` | `modules/library/build.gradle`、`modules/create/build.gradle` |
 | `https://maven.ryanhcode.dev/releases`（限定组 `dev.ryanhcode.sable-companion`） | Sable Companion `sable-companion-common-1.21.1:1.6.0`（`compileOnly`） | `modules/create/build.gradle` |
@@ -163,7 +163,7 @@ dependencies {
 | 组件 / 模组 | 状态 | 机制与说明 |
 | --- | --- | --- |
 | Minecraft `1.21.1` + NeoForge `[21.1.268,)` | 必需 | 由 `neoforge.mods.toml` 强制声明 |
-| Create `6.0.11-346` + Ponder + Flywheel + Registrate | 聚合 JAR 需提供 | 虽然 DI Bean 使用 `@CreateModBeans`（`IfCreateModLoaded`）条件启用，但 `:modules:library` 的 `neoforge.mods.toml` 无条件声明了 `kasuga_lib_create.mixins.json`（`required: true`），且 `CreateMixinPlugin` 会读取 `BezierConnection.class`，缺 Create 时客户端加载会抛出 `IllegalStateException` |
+| Create `6.0.10-280` + Ponder + Flywheel + Registrate | 聚合 JAR 需提供 | 虽然 DI Bean 使用 `@CreateModBeans`（`IfCreateModLoaded`）条件启用，但 `:modules:library` 的 `neoforge.mods.toml` 无条件声明了 `kasuga_lib_create.mixins.json`（`required: true`），且 `CreateMixinPlugin` 会读取 `BezierConnection.class`，缺 Create 时客户端加载会抛出 `IllegalStateException` |
 | `kasuga_lib_javet`（`external/slp/javet`） | 可选 | 提供 JavaScript（Javet `5.0.1`）脚本引擎；仅在加载声明 `javascript` 的脚本包时必需。首次运行会由 `JavetDownloader` 拉取平台 V8 原生库至 `<gameDir>/native-libraries/javet/` |
 | Iris `1.8.14-beta.1` + Sodium `0.8.14-beta.2` | 可选（仅客户端） | `kasuga_lib_iris.mixins.json` 设为 `required: false`，`IrisCameraMixinPlugin` 与 `IrisCompat` 在启动时做 ASM ABI 探测，不兼容或缺失时自动回退 |
 | Voxy / Sable | 可选 | `VoxyCompat` 与 `Create` Sable 适配器均按 `ModList` / 类存在性探测启用 |

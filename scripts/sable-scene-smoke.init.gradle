@@ -4,7 +4,7 @@ allprojects {
     configurations.configureEach {
         resolutionStrategy.dependencySubstitution {
             substitute(module('net.createmod.ponder:ponder-neoforge'))
-                    .using(module('net.createmod.ponder:ponder-neoforge:1.0.92+mc1.21.1'))
+                    .using(module('net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1'))
         }
     }
 }
